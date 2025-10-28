@@ -14,8 +14,9 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 from pathlib import Path
-from typing import Dict, Optional, Sequence
+from typing import Deque, Dict, Optional, Sequence
 
 import yaml
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
@@ -375,6 +376,42 @@ def append_alert_history(
         handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
+def load_recent_alerts(
+    history_path: Path,
+    limit: int,
+    filter_text: Optional[str] = None,
+) -> Deque[Dict]:
+    """Read the most recent alert records from the JSONL history file."""
+    entries: Deque[Dict] = deque(maxlen=max(1, limit))
+    if not history_path.exists():
+        return entries
+
+    filter_lower = filter_text.lower() if filter_text else None
+
+    with history_path.open("r", encoding="utf-8", errors="ignore") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if filter_lower:
+                haystack = " ".join(
+                    [
+                        str(record.get("source", "")),
+                        str(record.get("title", "")),
+                        str(record.get("message", "")),
+                        " ".join(record.get("reasons", []) or []),
+                    ]
+                ).lower()
+                if filter_lower not in haystack:
+                    continue
+            entries.append(record)
+    return entries
+
+
 def main() -> None:
     """Entrypoint invoked by the Windows executable or CLI."""
     parser = argparse.ArgumentParser(description=APP_NAME)
@@ -428,6 +465,22 @@ def main() -> None:
         help="Optional note to store alongside manual feedback entries.",
     )
     parser.set_defaults(feedback_importance=None)
+    parser.add_argument(
+        "--list-alerts",
+        action="store_true",
+        help="Print recent alerts from the history log and exit.",
+    )
+    parser.add_argument(
+        "--alerts-limit",
+        type=int,
+        default=20,
+        help="How many alert entries to show when using --list-alerts (default: 20).",
+    )
+    parser.add_argument(
+        "--alerts-filter",
+        type=str,
+        help="Optional case-insensitive filter applied to source/title/message/reasons when listing alerts.",
+    )
     args = parser.parse_args()
 
     config_path = args.config if args.config.is_absolute() else (Path.cwd() / args.config)
@@ -438,6 +491,28 @@ def main() -> None:
     alerts_path = resolve_path(logging_section.get("alerts_path", "logs/alerts.jsonl"))
     setup_logging(log_path)
     logger = logging.getLogger("tak.main")
+
+    if args.list_alerts:
+        alerts = load_recent_alerts(alerts_path, args.alerts_limit, args.alerts_filter)
+        if not alerts:
+            logger.info("No alert history found at %s.", alerts_path)
+        else:
+            logger.info("Showing %s most recent alerts from %s:", len(alerts), alerts_path)
+            for entry in alerts:
+                timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(entry.get("timestamp", time.time())))
+                reasons = ", ".join(entry.get("reasons") or [])
+                logger.info(
+                    "[%s] %s | %s | score=%.1f | reasons=%s | mode=%s",
+                    timestamp,
+                    entry.get("source", "Unknown"),
+                    entry.get("title"),
+                    entry.get("score", 0.0),
+                    reasons or "n/a",
+                    entry.get("mode", "N/A"),
+                )
+        return
+
+    feedback_path = resolve_path(config.get("feedback", {}).get("path", "logs/feedback.csv"))
 
     logger.info("%s starting up.", APP_NAME)
     presence_config = build_presence_config(config)

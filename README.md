@@ -87,6 +87,11 @@ The GUI exposes every configuration value, supports CSV/log file selection, and 
 
 ## Alert History & Feedback
 - Every alert is appended to `logging.alerts_path` as JSONL, capturing timestamp, score, reasons, mode, and metadata for later review.
+- Review the latest entries without leaving the terminal:
+  ```powershell
+  python .\src\main.py --config .\src\config.yaml --list-alerts --alerts-limit 15 --alerts-filter teams
+  ```
+  Adjust `--alerts-filter` (optional) and `--alerts-limit` (default 20) to suit your review session.
 - Record manual feedback from the CLI to reinforce scoring thresholds:
   ```powershell
   python .\src\main.py --config .\src\config.yaml --mark-feedback --event-id <ID> --important --feedback-note "follow up"
