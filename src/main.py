@@ -355,6 +355,23 @@ def main() -> None:
     """Entrypoint invoked by the Windows executable or CLI."""
     parser = argparse.ArgumentParser(description=APP_NAME)
     parser.add_argument("--config", type=Path, default=Path(__file__).parent / "config.yaml")
+    parser.add_argument(
+        "--send-test-alert",
+        action="store_true",
+        help="Dispatch a synthetic high-priority alert to validate notification channels.",
+    )
+    parser.add_argument(
+        "--test-alert-title",
+        type=str,
+        default="Teams Activity Keeper Test",
+        help="Title to use when sending a synthetic test alert.",
+    )
+    parser.add_argument(
+        "--test-alert-message",
+        type=str,
+        default="If you are reading this alert, your notification channel is working.",
+        help="Body message for the synthetic test alert.",
+    )
     args = parser.parse_args()
 
     config_path = args.config if args.config.is_absolute() else (Path.cwd() / args.config)
@@ -368,6 +385,23 @@ def main() -> None:
     presence_config = build_presence_config(config)
     scorer_config = build_scorer_config(config)
     notification_config = build_notification_config(config)
+
+    if args.send_test_alert:
+        notifier = NotificationManager(notification_config, logger=logging.getLogger("tak.notifier"))
+        test_event = NotificationEvent(
+            source="Test Harness",
+            title=args.test_alert_title,
+            message=args.test_alert_message,
+            score=max(notification_config.tier3_threshold, scorer_config.tier3_threshold) + 1,
+            reasons=["Manual test alert"],
+        )
+        notifier.handle(test_event, quiet_hours_active=False)
+        logger.info(
+            "Test alert dispatched (id=%s, title=%s). Review your notification channels for delivery.",
+            test_event.event_id,
+            test_event.title,
+        )
+        return
 
     # Instantiate subsystems
     presence = PresenceKeeper(presence_config, logger=logging.getLogger("tak.presence"))

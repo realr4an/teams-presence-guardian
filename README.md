@@ -57,6 +57,13 @@ README.md
    ```
    A tray icon titled "Teams Activity Keeper" will appear; right-click to change modes or exit.
 
+### Quick Alert Test
+Before relying on remote channels, trigger a synthetic alert:
+```powershell
+python .\src\main.py --config .\src\config.yaml --send-test-alert --test-alert-message "Hello from TAK"
+```
+This sends a tier-3 notification through every enabled channel (toast, sound, Telegram, Pushover, Twilio). Adjust `--test-alert-title` / `--test-alert-message` as needed.
+
 ## Settings GUI
 - Launch directly: `python .\src\settings_ui.py --config .\src\config.yaml`
 - Or open it from the tray menu via **View Settings**.  
