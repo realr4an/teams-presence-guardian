@@ -44,12 +44,26 @@ notifications:
     from_number: ''
     to_number: ''
 monitors:
-- name: Teams Activity Log
+- name: Teams (Classic) Activity
   path: '%APPDATA%/Microsoft/Teams/logs.txt'
-  parser: text
-- name: Outlook Activity
-  path: '%APPDATA%/Microsoft/Outlook/logs/activity.jsonl'
-  parser: json
+  parser: teams_legacy
+- name: Teams (New) Activity
+  path: '%LOCALAPPDATA%/Packages/MSTeams_8wekyb3d8bbwe/LocalCache/Microsoft/MSTeams/logs.txt'
+  parser: teams_modern
+
+windows_notifications:
+  enabled: true
+  db_path: '%LOCALAPPDATA%/Microsoft/Windows/Notifications/wpndatabase.db'
+  poll_interval_seconds: 5
+  app_ids:
+  - msteams
+  - microsoftteams
+  - teams
+  - outlook
+  title_overrides:
+    microsoftteams: Microsoft Teams
+    teams: Microsoft Teams
+    outlook: Outlook
 feedback:
   path: logs/feedback.csv
   auto_log: false

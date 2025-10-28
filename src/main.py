@@ -8,13 +8,14 @@ import json
 import logging
 import os
 import queue
+import re
 import signal
 import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence
 
 import yaml
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
@@ -24,8 +25,37 @@ from notifier import NotificationEvent, NotificationManager, NotificationManager
 from presence import PresenceConfig, PresenceKeeper
 from scorer import EventScorer, QuietHoursConfig, ScorerConfig
 from tray import AppMode, TrayController
+from windows_notifications import WindowsNotificationWatcher, WindowsNotificationWatcherConfig
 
 APP_NAME = "Teams Activity Keeper"
+
+
+def _extract_value(line: str, keys: Sequence[str]) -> Optional[str]:
+    """Attempt to pull a quoted value for any of the given keys from a log line."""
+    for key in keys:
+        pattern = rf'"{key}"\s*:\s*"([^"]+)"'
+        match = re.search(pattern, line)
+        if match:
+            return match.group(1)
+
+    for key in keys:
+        pattern = rf"{key}\s*[:=]\s*'([^']+)'"
+        match = re.search(pattern, line, re.IGNORECASE)
+        if match:
+            return match.group(1)
+
+    return None
+
+
+def _strip_prefix(line: str) -> str:
+    """Remove common timestamp prefixes from log lines."""
+    trimmed = line.strip()
+    candidates = ["]", " - ", " | ", "\t"]
+    for token in candidates:
+        idx = trimmed.find(token)
+        if 0 < idx < 40:
+            return trimmed[idx + len(token) :].strip()
+    return trimmed
 
 
 def load_config(path: Path) -> Dict:
@@ -96,7 +126,7 @@ class TailHandler(FileSystemEventHandler):
 
     def _parse_line(self, line: str) -> Optional[NotificationEvent]:
         """Parse a raw log line into a NotificationEvent according to config."""
-        parser = self._config.get("parser", "text")
+        parser = (self._config.get("parser") or "text").lower()
         source = self._config.get("name", "Unknown")
         metadata = {}
 
@@ -109,11 +139,44 @@ class TailHandler(FileSystemEventHandler):
             except json.JSONDecodeError:
                 self._logger.debug("Skipping invalid JSON line: %s", line)
                 return None
+        elif parser in {"teams_legacy", "teams_modern"}:
+            event = self._parse_teams_line(line=line, source=source)
+            if event:
+                return event
+            title = source
+            message = line
         else:  # default text parser
             title = source
             message = line
 
         return NotificationEvent(source=source, title=title, message=message, metadata=metadata)
+
+    def _parse_teams_line(self, line: str, source: str) -> Optional[NotificationEvent]:
+        """Heuristically extract interesting data from Teams log lines."""
+        lowered = line.lower()
+        if "notification" not in lowered and "activity" not in lowered and "message" not in lowered:
+            # Skip very noisy entries (network pings, perf logs, etc.)
+            return None
+
+        sender = _extract_value(line, ["senderName", "senderDisplayName", "fromName"])
+        title = _extract_value(line, ["title", "subject"]) or f"{source} activity"
+        message = _extract_value(line, ["body", "message", "content"]) or _strip_prefix(line)
+
+        metadata = {
+            "sender": sender or "",
+            "mentioned": "mention" in lowered or " @you" in lowered or "<at>" in lowered,
+            "raw_event_hint": line[:512],
+        }
+
+        if not message:
+            message = line[:512]
+
+        return NotificationEvent(
+            source=source,
+            title=title,
+            message=message,
+            metadata=metadata,
+        )
 
 
 class AppState:
@@ -259,6 +322,18 @@ def resolve_path(path_value: str) -> Path:
     return expanded
 
 
+def build_windows_notification_config(config: Dict) -> WindowsNotificationWatcherConfig:
+    """Create configuration for the Windows notification watcher."""
+    section = config.get("windows_notifications", {}) or {}
+    return WindowsNotificationWatcherConfig(
+        enabled=section.get("enabled", False),
+        db_path=section.get("db_path"),
+        poll_interval_seconds=section.get("poll_interval_seconds", 5),
+        app_ids=section.get("app_ids", []),
+        title_overrides=section.get("title_overrides", {}),
+    )
+
+
 def main() -> None:
     """Entrypoint invoked by the Windows executable or CLI."""
     parser = argparse.ArgumentParser(description=APP_NAME)
@@ -311,6 +386,17 @@ def main() -> None:
         observer.start()
         observers.append(observer)
         handler_logger.info("Watching %s for updates.", file_path)
+
+    windows_notifications_cfg = build_windows_notification_config(config)
+    win_notification_watcher: Optional[WindowsNotificationWatcher] = None
+    if windows_notifications_cfg.enabled:
+        win_notification_watcher = WindowsNotificationWatcher(
+            event_queue=event_queue,
+            config=windows_notifications_cfg,
+            stop_event=stop_event,
+            logger=logging.getLogger("tak.win_notif"),
+        )
+        win_notification_watcher.start()
 
     settings_script = Path(__file__).parent / "settings_ui.py"
 
@@ -390,6 +476,8 @@ def main() -> None:
         for observer in observers:
             observer.stop()
             observer.join(timeout=5)
+        if win_notification_watcher:
+            win_notification_watcher.join(timeout=5)
         idle_watcher.join(timeout=5)
         logger.info("%s stopped.", APP_NAME)
 
