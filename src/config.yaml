@@ -2,6 +2,7 @@ app:
   name: Teams Activity Keeper
 logging:
   path: logs/teams_activity_keeper.log
+  alerts_path: logs/alerts.jsonl
 presence:
   keepalive_interval_seconds: 45
   allow_display_sleep: false

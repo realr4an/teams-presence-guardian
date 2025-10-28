@@ -23,7 +23,7 @@ from watchdog.observers import Observer
 
 from notifier import NotificationEvent, NotificationManager, NotificationManagerConfig
 from presence import PresenceConfig, PresenceKeeper
-from scorer import EventScorer, QuietHoursConfig, ScorerConfig
+from scorer import EventScorer, QuietHoursConfig, ScoreResult, ScorerConfig
 from tray import AppMode, TrayController
 from windows_notifications import WindowsNotificationWatcher, WindowsNotificationWatcherConfig
 
@@ -351,6 +351,30 @@ def build_windows_notification_config(config: Dict) -> WindowsNotificationWatche
     )
 
 
+def append_alert_history(
+    event: NotificationEvent,
+    score: ScoreResult,
+    history_path: Path,
+    mode: AppMode,
+) -> None:
+    """Append a structured record of the alert for later feedback review."""
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "timestamp": time.time(),
+        "event_id": event.event_id,
+        "source": event.source,
+        "title": event.title,
+        "message": event.message[:512],
+        "score": event.score,
+        "reasons": event.reasons,
+        "mode": mode.name,
+        "quiet_hours_active": score.quiet_hours_active,
+        "metadata": event.metadata,
+    }
+    with history_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
 def main() -> None:
     """Entrypoint invoked by the Windows executable or CLI."""
     parser = argparse.ArgumentParser(description=APP_NAME)
@@ -372,12 +396,46 @@ def main() -> None:
         default="If you are reading this alert, your notification channel is working.",
         help="Body message for the synthetic test alert.",
     )
+    parser.add_argument(
+        "--mark-feedback",
+        action="store_true",
+        help="Record manual feedback for a past alert (requires --event-id and importance flag).",
+    )
+    parser.add_argument(
+        "--event-id",
+        type=str,
+        help="The event identifier to tag when using --mark-feedback.",
+    )
+    feedback_group = parser.add_mutually_exclusive_group()
+    feedback_group.add_argument(
+        "--important",
+        action="store_const",
+        const=True,
+        dest="feedback_importance",
+        help="Mark the selected event as important.",
+    )
+    feedback_group.add_argument(
+        "--not-important",
+        action="store_const",
+        const=False,
+        dest="feedback_importance",
+        help="Mark the selected event as not important.",
+    )
+    parser.add_argument(
+        "--feedback-note",
+        type=str,
+        default="",
+        help="Optional note to store alongside manual feedback entries.",
+    )
+    parser.set_defaults(feedback_importance=None)
     args = parser.parse_args()
 
     config_path = args.config if args.config.is_absolute() else (Path.cwd() / args.config)
     raw_config = load_config(config_path)
     config = resolve_env_placeholders(raw_config)
-    log_path = resolve_path(config.get("logging", {}).get("path", "logs/teams_activity_keeper.log"))
+    logging_section = config.get("logging", {}) or {}
+    log_path = resolve_path(logging_section.get("path", "logs/teams_activity_keeper.log"))
+    alerts_path = resolve_path(logging_section.get("alerts_path", "logs/alerts.jsonl"))
     setup_logging(log_path)
     logger = logging.getLogger("tak.main")
 
@@ -400,6 +458,32 @@ def main() -> None:
             "Test alert dispatched (id=%s, title=%s). Review your notification channels for delivery.",
             test_event.event_id,
             test_event.title,
+        )
+        return
+
+    if args.mark_feedback:
+        if not args.event_id:
+            logger.error("Cannot mark feedback without --event-id.")
+            return
+        if args.feedback_importance is None:
+            logger.error("Specify --important or --not-important when using --mark-feedback.")
+            return
+        feedback_notifier = NotificationManager(
+            notification_config,
+            logger=logging.getLogger("tak.notifier"),
+        )
+        note = args.feedback_note.strip() or "manual_cli"
+        feedback_notifier.record_feedback(
+            args.event_id,
+            was_important=args.feedback_importance,
+            storage_path=feedback_path,
+            note=note,
+        )
+        logger.info(
+            "Feedback logged for %s (important=%s, note=%s).",
+            args.event_id,
+            args.feedback_importance,
+            note,
         )
         return
 
@@ -491,7 +575,6 @@ def main() -> None:
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
-    feedback_path = resolve_path(config.get("feedback", {}).get("path", "logs/feedback.csv"))
 
     try:
         while not stop_event.is_set():
@@ -513,10 +596,16 @@ def main() -> None:
                 continue
 
             notifier.handle(event, quiet_hours_active=score_result.quiet_hours_active)
+            append_alert_history(event, score_result, alerts_path, app_state.mode)
             tray.update_tooltip(f"{app_state.mode.name.title()} | Last alert: {event.title}")
 
             if config.get("feedback", {}).get("auto_log", False):
-                notifier.record_feedback(event.event_id, was_important=True, storage_path=feedback_path)
+                notifier.record_feedback(
+                    event.event_id,
+                    was_important=True,
+                    storage_path=feedback_path,
+                    note="auto_log",
+                )
 
     except KeyboardInterrupt:
         stop_event.set()
@@ -536,3 +625,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

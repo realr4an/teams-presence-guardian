@@ -14,6 +14,7 @@ Teams Activity Keeper is a lightweight Windows tray companion that keeps Microso
 - **Tray UI:** Pystray-based icon with quick mode switches (Pause, Silent, Notify-only, Presence+Notify) and a presence toggle.
 - **Settings GUI:** Tkinter editor (`settings_ui.py`) covering every configuration block so users can change settings without editing YAML.
 - **Feedback Loop:** Records user feedback for future ML tuning and logs every action with timestamps.
+- **Alert History & Feedback CLI:** Archives every alert to JSONL and lets you label importance later via the CLI.
 
 ## Project Structure
 ```
@@ -72,6 +73,7 @@ The GUI exposes every configuration value, supports CSV/log file selection, and 
 ## Configuration Notes
 - **Monitors:** Supports `text`, `json`, and heuristics for Teams logs via `teams_legacy` / `teams_modern`. Add additional monitors for any append-only log file you rely on.
 - **Windows notifications:** Enable `windows_notifications` to poll the Action Center SQLite database; adjust `app_ids` filters to match Teams/Outlook identifiers in your environment.
+- **Logging:** `logging.path` controls the main log; `logging.alerts_path` stores alert history JSONL for later review.
 - **Secrets & environment variables:** The loader replaces `${ENV_VAR}` tokens with values from the current environment, so you can keep API keys out of source control.
 - **Quiet Hours:** Enable in `scoring.quiet_hours`. Quiet hours apply a scoring penalty and can suppress notifications when `notifications.respect_quiet_hours` is true.
 - **Feedback:** Enable `feedback.auto_log` to automatically flag delivered alerts as important, or capture manual feedback later using `NotificationManager.record_feedback`.
@@ -82,6 +84,15 @@ The GUI exposes every configuration value, supports CSV/log file selection, and 
 2. **Teams (new):** If you use the new Teams client, ensure the second monitor path exists (`%LOCALAPPDATA%\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams\logs.txt`). Adjust the parser to `text` if Microsoft changes the format.
 3. **Windows Action Center:** Keep `windows_notifications.enabled = true` so toast notifications from Teams/Outlook become `NotificationEvent`s even when log formats drift. Run a quick test by sending yourself a Teams message and watching `logs/teams_activity_keeper.log` for the scored event.
 4. **Custom sources:** Add more monitor entries (e.g., shared drive incident logs) with `parser: json` for JSONL feeds or `parser: text` for simple append-only files.
+
+## Alert History & Feedback
+- Every alert is appended to `logging.alerts_path` as JSONL, capturing timestamp, score, reasons, mode, and metadata for later review.
+- Record manual feedback from the CLI to reinforce scoring thresholds:
+  ```powershell
+  python .\src\main.py --config .\src\config.yaml --mark-feedback --event-id <ID> --important --feedback-note "follow up"
+  ```
+  Swap `--important` for `--not-important` when downgrading a noisy alert.
+- Feedback entries live in `logs/feedback.csv` with columns `timestamp,event_id,important,note`. Auto-tagged alerts (via `feedback.auto_log`) include the note `auto_log`.
 
 ## Packaging Into an EXE
 `build_instructions.txt` walks through creating:

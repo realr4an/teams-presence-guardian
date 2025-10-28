@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import logging
 import threading
 import time
@@ -111,12 +112,12 @@ class NotificationManager:
         if alert_level is AlertLevel.TIER3:
             self._trigger_escalation(event)
 
-    def record_feedback(self, event_id: str, was_important: bool, storage_path: Path) -> None:
+    def record_feedback(self, event_id: str, was_important: bool, storage_path: Path, note: Optional[str] = None) -> None:
         """Persist user feedback to help with later ML fine-tuning."""
         storage_path.parent.mkdir(parents=True, exist_ok=True)
-        line = f"{time.time():.0f},{event_id},{int(was_important)}\n"
-        with storage_path.open("a", encoding="utf-8") as handle:
-            handle.write(line)
+        with storage_path.open("a", encoding="utf-8", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow([int(time.time()), event_id, int(was_important), note or ""])
         self._logger.info("Feedback recorded for %s (important=%s).", event_id, was_important)
 
     def _record_alert(self, event: NotificationEvent) -> None:
@@ -253,4 +254,3 @@ class NotificationManager:
             self._logger.info("Twilio call initiated for %s.", event.event_id)
         except Exception as exc:  # pragma: no cover
             self._logger.error("Twilio call failed: %s", exc)
-
