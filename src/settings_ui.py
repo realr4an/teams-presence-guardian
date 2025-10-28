@@ -227,6 +227,14 @@ class SettingsApp:
             ttk.Label(self._notifications_tab, text=label).grid(row=offset, column=0, sticky="w", padx=10, pady=4)
             ttk.Entry(self._notifications_tab, textvariable=self._notifications_vars[key]).grid(row=offset, column=1, padx=10, pady=4, sticky="ew")
 
+        hint_row = 15 + len(labels)
+        ttk.Label(
+            self._notifications_tab,
+            text="Tip: Use ${ENV_VAR} tokens (e.g. ${TELEGRAM_BOT_TOKEN}) to load secrets from the environment.",
+            foreground="gray",
+            wraplength=360,
+        ).grid(row=hint_row, column=0, columnspan=2, sticky="w", padx=10, pady=(6, 0))
+
         self._notifications_tab.columnconfigure(1, weight=1)
 
     def _build_monitors_tab(self) -> None:
@@ -515,4 +523,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

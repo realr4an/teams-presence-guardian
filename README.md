@@ -50,6 +50,7 @@ README.md
    - Notification channels (Telegram, Pushover, Twilio)
    - `monitors` entries for Teams logs (classic + new) or add your own feeds
    - `windows_notifications` if you want to listen to Action Center toasts (Teams/Outlook, etc.)
+   - Secrets can reference environment variables via `${MY_ENV_VAR}` tokens so you avoid storing credentials in plain text.
 4. **Run the tray app:**
    ```powershell
    python .\src\main.py --config .\src\config.yaml
@@ -64,6 +65,7 @@ The GUI exposes every configuration value, supports CSV/log file selection, and 
 ## Configuration Notes
 - **Monitors:** Supports `text`, `json`, and heuristics for Teams logs via `teams_legacy` / `teams_modern`. Add additional monitors for any append-only log file you rely on.
 - **Windows notifications:** Enable `windows_notifications` to poll the Action Center SQLite database; adjust `app_ids` filters to match Teams/Outlook identifiers in your environment.
+- **Secrets & environment variables:** The loader replaces `${ENV_VAR}` tokens with values from the current environment, so you can keep API keys out of source control.
 - **Quiet Hours:** Enable in `scoring.quiet_hours`. Quiet hours apply a scoring penalty and can suppress notifications when `notifications.respect_quiet_hours` is true.
 - **Feedback:** Enable `feedback.auto_log` to automatically flag delivered alerts as important, or capture manual feedback later using `NotificationManager.record_feedback`.
 - **Security:** No network calls occur unless a channel is explicitly marked `enabled` and provided with credentials.

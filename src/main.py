@@ -58,6 +58,23 @@ def _strip_prefix(line: str) -> str:
     return trimmed
 
 
+def resolve_env_placeholders(value):
+    """Recursively replace ${ENV_VAR} tokens with environment variable values."""
+    if isinstance(value, dict):
+        return {key: resolve_env_placeholders(val) for key, val in value.items()}
+    if isinstance(value, list):
+        return [resolve_env_placeholders(item) for item in value]
+    if isinstance(value, str):
+        pattern = re.compile(r"\$\{([^}]+)\}")
+
+        def repl(match):
+            env_key = match.group(1)
+            return os.getenv(env_key, "")
+
+        return pattern.sub(repl, value)
+    return value
+
+
 def load_config(path: Path) -> Dict:
     """Load YAML configuration from the given path."""
     with path.open("r", encoding="utf-8") as handle:
@@ -341,7 +358,8 @@ def main() -> None:
     args = parser.parse_args()
 
     config_path = args.config if args.config.is_absolute() else (Path.cwd() / args.config)
-    config = load_config(config_path)
+    raw_config = load_config(config_path)
+    config = resolve_env_placeholders(raw_config)
     log_path = resolve_path(config.get("logging", {}).get("path", "logs/teams_activity_keeper.log"))
     setup_logging(log_path)
     logger = logging.getLogger("tak.main")
