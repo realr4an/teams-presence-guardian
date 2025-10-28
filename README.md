@@ -3,7 +3,7 @@
 > **Status:** Alpha preview (core presence keeping, log monitors, tray UI, and settings GUI working).  
 > **Last updated:** 2025-10-28. Microsoft Graph integration, ML model training, and packaged installers are still outstanding.
 
-Teams Activity Keeper is a lightweight Windows tray companion that keeps Microsoft Teams presence online when you intentionally step away, while monitoring local signals for urgent activity. It is designed for realr4an with a focus on privacy, low resource usage, and extensibility.
+Teams Activity Keeper is a lightweight Windows tray companion that keeps Microsoft Teams presence online when you intentionally step away, while monitoring local signals for urgent activity. The project focuses on privacy, low resource usage, and extensibility.
 
 ## Features
 - **Presence Keeper:** Uses Windows power APIs (no input emulation) to keep the system awake only when you are away and pauses automatically when you return.
