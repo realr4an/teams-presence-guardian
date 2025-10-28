@@ -1,0 +1,38 @@
+Build Teams Activity Keeper into a single-file executable using PyInstaller.
+
+Prerequisites:
+- Windows 10/11 with Python 3.11+
+- Virtual environment with dependencies from requirements.txt
+- PyInstaller 6.5+ installed (pip install pyinstaller)
+
+Steps:
+1. Activate the virtual environment:
+   ```
+   .\.venv\Scripts\Activate.ps1
+   ```
+2. Ensure PyInstaller is installed:
+   ```
+   pip install pyinstaller
+   ```
+3. Build the background tray application from the project root:
+   ```
+   pyinstaller --onefile --windowed ^
+     --name "TeamsActivityKeeper" ^
+     --add-data "src\config.yaml;." ^
+     --hidden-import win10toast ^
+     --hidden-import pystray._win32 ^
+     src\main.py
+   ```
+   - `--windowed` prevents a console window.
+   - `--add-data` bundles the default configuration.
+   - Additional `--hidden-import` directives may be needed if optional channels are enabled.
+4. (Optional) Build a dedicated settings launcher so the tray app can spawn it after packaging:
+   ```
+   pyinstaller --onefile --windowed ^
+     --name "TeamsActivityKeeperSettings" ^
+     src\settings_ui.py
+   ```
+   Place `TeamsActivityKeeperSettings.exe` in the same folder as `TeamsActivityKeeper.exe`.
+5. The resulting binaries live in `dist\`. Copy `config.yaml` to a writable location (or bundle your own via `--add-data`) before distribution.
+
+Tip: Use `--icon path\to\icon.ico` once a branded icon is available.

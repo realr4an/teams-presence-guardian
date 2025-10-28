@@ -1,0 +1,3 @@
+# Place trained model files (e.g., classifier.pkl) here. Keep directory in git without large binaries.
+*
+!.gitignore

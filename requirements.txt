@@ -1,0 +1,8 @@
+pystray==0.19.5
+Pillow==10.4.0
+win10toast==0.9
+pyyaml==6.0.2
+watchdog==4.0.1
+requests==2.32.3
+scikit-learn==1.5.2
+joblib==1.4.2
